@@ -218,3 +218,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# obfuscator — файлы владельца и служебные каталоги проекта
+/dictionary.toml
+/runs/
+/logs/
+/.idea/
+*.obfstate/
