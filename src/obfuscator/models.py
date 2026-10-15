@@ -71,6 +71,7 @@ class Report:
         per_rule: Оригинал → число замен.
         per_file: Путь оригинала → число замен.
         files: Категория → пути оригинала.
+        locations: Где что лежит: ``root``, ``copy``, ``state``, ``patch``.
     """
 
     command: Command
@@ -81,3 +82,4 @@ class Report:
     per_rule: dict[str, int] = field(default_factory=dict[str, int])
     per_file: dict[str, int] = field(default_factory=dict[str, int])
     files: dict[str, list[str]] = field(default_factory=dict[str, list[str]])
+    locations: dict[str, str] = field(default_factory=dict[str, str])

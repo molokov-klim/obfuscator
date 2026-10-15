@@ -30,23 +30,23 @@ class Match:
 
 
 class Scanner:
-    """Поиск набора строк без учёта регистра, с перекрытием: проверяется каждая позиция текста."""
+    """Поиск набора строк (по умолчанию без учёта регистра) с перекрытием: проверяется каждая позиция текста."""
 
-    def __init__(self, needles: Iterable[str]) -> None:
+    def __init__(self, needles: Iterable[str], *, ignore_case: bool = True) -> None:
         """Создаёт сканер.
 
         Args:
             needles: Искомые строки; пустые игнорируются.
+            ignore_case: Искать без учёта регистра (по умолчанию) или точно.
         """
+        flags = re.IGNORECASE if ignore_case else 0
         items = sorted({needle for needle in needles if needle}, key=lambda key: (-len(key), key))
         self._pattern = (
-            re.compile("(?=(" + "|".join(re.escape(item) for item in items) + "))", re.IGNORECASE) if items else None
+            re.compile("(?=(" + "|".join(re.escape(item) for item in items) + "))", flags) if items else None
         )
         encoded = sorted({item.encode() for item in items}, key=lambda key: (-len(key), key))
         self._bytes_pattern = (
-            re.compile(b"(?=(" + b"|".join(re.escape(item) for item in encoded) + b"))", re.IGNORECASE)
-            if encoded
-            else None
+            re.compile(b"(?=(" + b"|".join(re.escape(item) for item in encoded) + b"))", flags) if encoded else None
         )
 
     def find(self, text: str) -> list[Match]:

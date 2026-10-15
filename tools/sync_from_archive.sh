@@ -157,13 +157,16 @@ done < <(git ls-files -z)
 
 TO_ADD=()
 TO_CHANGE=()
+CHANGE_NOTE=()
 for rel in "${ARCHIVE_FILES[@]}"; do
     if [[ ! -e "$rel" && ! -L "$rel" ]]; then
         TO_ADD+=("$rel")
     elif ! cmp -s "$SRC/$rel" "$rel"; then
         TO_CHANGE+=("$rel")
+        CHANGE_NOTE+=("$rel")
     elif [[ -x "$SRC/$rel" && ! -x "$rel" ]] || [[ ! -x "$SRC/$rel" && -x "$rel" ]]; then
         TO_CHANGE+=("$rel")
+        CHANGE_NOTE+=("$rel (только бит исполнения: в архиве $(stat -c %A "$SRC/$rel"), в рабочей копии $(stat -c %A "$rel"))")
     fi
 done
 
@@ -180,7 +183,7 @@ print_list() {
     printf '  %s\n' "$@"
 }
 print_list "Будут УДАЛЕНЫ" "${TO_DELETE[@]}"
-print_list "Будут изменены" "${TO_CHANGE[@]}"
+print_list "Будут изменены" "${CHANGE_NOTE[@]}"
 print_list "Будут добавлены" "${TO_ADD[@]}"
 
 [[ -r /dev/tty ]] || die "нет терминала для подтверждения (/dev/tty)"
