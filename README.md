@@ -3,8 +3,29 @@
 Лексический обфускатор проекта для безопасной работы с LLM-агентом: по словарю замен строит копию проекта без реальных
 имён, хостов и секретов, а изменения, сделанные агентом в копии, возвращает в оригинальный проект.
 
-**Статус:** в разработке, функциональности пока нет. Документы: [идея](spec/idea.md),
+**Статус:** в разработке; пока есть только `obfuscator --version`. Документы: [идея](spec/idea.md),
 [требования](spec/requirements.md), [спецификация](spec/specification.md), [план](spec/plan.md).
+
+## Установка
+
+Нужны Python 3.12, [uv](https://docs.astral.sh/uv/) и git.
+
+```bash
+git clone <репозиторий> obfuscator && cd obfuscator
+uv sync
+uv run obfuscator --version
+```
+
+## Проверки
+
+```bash
+uv run ruff check .          # линтер, docstring в стиле Google
+uv run ruff format --check . # форматирование (исправить: uv run ruff format .)
+uv run pyright               # типы, режим strict
+uv run pytest                # тесты; долгие: uv run pytest -m slow
+```
+
+Те же проверки запускает GitHub Actions на Linux и Windows при каждом push в `main`/`develop` и в pull request.
 
 ## Общие задачи разработки
 
@@ -15,8 +36,8 @@
 
 ```bash
 cd ~/Projects/obfuscator \
-  && unzip -o -j ~/Downloads/obfuscator-0.0.1.zip 'obfuscator-0.0.1/tools/sync_from_archive.sh' -d /tmp/obf-sync \
-  && bash /tmp/obf-sync/sync_from_archive.sh ~/Downloads/obfuscator-0.0.1.zip \
+  && unzip -o -j ~/Загрузки/obfuscator-0.0.1.zip 'obfuscator-0.0.1/tools/sync_from_archive.sh' -d /tmp/obf-sync \
+  && bash /tmp/obf-sync/sync_from_archive.sh ~/Загрузки/obfuscator-0.0.1.zip \
   && uv sync \
   && git add -A && git commit -m "0.0.1: <что сделано>" && git tag sdd/0.0.1
 ```
@@ -25,12 +46,15 @@ cd ~/Projects/obfuscator \
 
 ```bash
 cd ~/Projects/obfuscator \
-  && tools/sync_from_archive.sh ~/Downloads/obfuscator-<версия>.zip \
-  && uv sync && <проверки из сообщения ассистента> \
+  && tools/sync_from_archive.sh ~/Загрузки/obfuscator-<версия>.zip \
+  && uv sync \
+  && uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run pytest \
   && git add -A && git commit -m "<версия>: <что сделано>" && git tag sdd/<версия>
 ```
 
-Точная команда приходит с каждой поставкой. Вывод команды целиком отправляется ассистенту.
+Точная команда приходит с каждой поставкой. Вывод команды целиком отправляется ассистенту. Если упала проверка,
+коммит не создаётся; рабочее дерево остаётся с файлами поставки — отправьте вывод ассистенту и верните дерево к
+предыдущей поставке: `git reset --hard && git clean -fd` (игнорируемые файлы и файлы владельца не затрагиваются).
 
 ### Что делает скрипт синхронизации
 
@@ -67,3 +91,5 @@ cd ~/Projects/obfuscator \
 ```bash
 git push origin develop --tags
 ```
+
+Результат CI — во вкладке Actions репозитория; при падении отправьте ассистенту лог упавшего шага.

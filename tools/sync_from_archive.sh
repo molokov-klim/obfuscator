@@ -58,7 +58,7 @@ is_excluded() {
 # --- Аргументы и окружение ----------------------------------------------------------------------------------------
 
 [[ $# -eq 1 ]] || die "нужен один аргумент — путь к архиву поставки" \
-    "пример: tools/sync_from_archive.sh ~/Downloads/obfuscator-0.0.1.zip"
+    "пример: tools/sync_from_archive.sh ~/Загрузки/obfuscator-0.0.1.zip"
 ARCHIVE="$(realpath -- "$1")"
 [[ -f "$ARCHIVE" ]] || die "архив не найден: $1"
 command -v unzip >/dev/null || die "не найдена программа unzip" "установите: sudo apt install unzip"

@@ -29,7 +29,7 @@
   Windows (CI GitHub Actions).
 - Репозиторий: `/home/k-molokov/Projects/obfuscator`, GitHub. Ветки: `main` (основная), `develop` (разработка,
   сюда идут поставки). Push и слияние в `main` — владелец.
-- Загрузки: `~/Downloads`.
+- Загрузки: `~/Загрузки`.
 - Файлы владельца вне архивов (игнорируются git): `/dictionary.toml` (рабочий словарь), `/runs/`, `/logs/`,
   `/.idea/`, `*.obfstate/`. Пример словаря `dictionary.example.toml` — в git.
 - Реальные словари и проекты владельца ассистенту не передаются; тесты и проверки — только на синтетике.
@@ -49,4 +49,10 @@
 
 ## Структура кода
 
-Пока кода нет. Планируемая структура — plan §2.1.
+Пакет `src/obfuscator/` (hatchling): `cli.py` — `main(argv) -> int`, коды выхода 0/1/2. Тесты: `tests/unit/`,
+`tests/integration/`. Целевая структура — plan §2.1. Идентификаторы — английские, docstring и сообщения — русские
+(Google style); в тестах docstring не требуются (plan §9 п. 7).
+
+Проверка в песочнице ассистента (нет PyPI): `ruff check`, `ruff format --check`, `pyright` с временным
+`pyrightconfig.json` (pythonPath — окружение предустановленного pytest, `extraPaths` — `src` и каталог с фиктивным
+`obfuscator-<версия>.dist-info` для `importlib.metadata`), `pytest` с `PYTHONPATH=src:<этот каталог>`.
