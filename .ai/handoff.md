@@ -51,11 +51,15 @@
 
 Пакет `src/obfuscator/` (hatchling): `cli.py` — `main(argv) -> int`, коды выхода 0/1/2; `errors.py` — коды §7 и
 `ObfuscatorError` (список находок); `models.py`; `dictionary.py`, `allow.py`, `state.py`; `narrow.py` — сужение
-типов `tomllib`/`json` для pyright strict. Отказы собирают все находки сразу, а не первую. Тесты: `tests/unit/`,
+типов `tomllib`/`json` для pyright strict. Отказы собирают все находки сразу, а не первую.
+Чистое ядро (без файлов и git): `replacer.py` (один проход, самый длинный источник), `paths.py` (E10/W02),
+`scanner.py` (перекрывающийся поиск без учёта регистра, E12/W10/W01/W11), `changes.py`, `merge.py` (построчное
+восстановление: нетронутые строки — из оригинала). Тесты: `tests/unit/`,
 `tests/integration/`. Целевая структура — plan §2.1. Идентификаторы — английские, docstring и сообщения — русские
 (Google style); в тестах docstring не требуются (plan §9 п. 7).
 
 Проверка в песочнице ассистента (нет PyPI): `ruff check`, `ruff format --check`, `pyright` с временным
 `pyrightconfig.json` (pythonPath — окружение предустановленного pytest, `extraPaths` — `src` и каталог с фиктивным
 `obfuscator-<версия>.dist-info` для `importlib.metadata`), `pytest` с `PYTHONPATH=src:<этот каталог>:<каталог со ссылкой на pathspec из /usr/local/lib/python3.13/dist-packages>`;
-для pyright тот же каталог pathspec — в `extraPaths`.
+для pyright тот же каталог pathspec — в `extraPaths`. hypothesis в песочнице нет: `tests/unit/test_properties.py` исключается из
+pyright (`exclude` во временном конфиге) и pytest (`--ignore`), свойства проверяются отдельной случайной моделью.
