@@ -1,11 +1,11 @@
 [project]
 name = "obfuscator"
-version = "0.1.1"
+version = "0.2.1"
 description = "Лексический обфускатор проекта для безопасной работы с LLM-агентом"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["pathspec>=1.1"]
 
 [project.scripts]
 obfuscator = "obfuscator.cli:main"

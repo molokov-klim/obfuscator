@@ -49,10 +49,13 @@
 
 ## Структура кода
 
-Пакет `src/obfuscator/` (hatchling): `cli.py` — `main(argv) -> int`, коды выхода 0/1/2. Тесты: `tests/unit/`,
+Пакет `src/obfuscator/` (hatchling): `cli.py` — `main(argv) -> int`, коды выхода 0/1/2; `errors.py` — коды §7 и
+`ObfuscatorError` (список находок); `models.py`; `dictionary.py`, `allow.py`, `state.py`; `narrow.py` — сужение
+типов `tomllib`/`json` для pyright strict. Отказы собирают все находки сразу, а не первую. Тесты: `tests/unit/`,
 `tests/integration/`. Целевая структура — plan §2.1. Идентификаторы — английские, docstring и сообщения — русские
 (Google style); в тестах docstring не требуются (plan §9 п. 7).
 
 Проверка в песочнице ассистента (нет PyPI): `ruff check`, `ruff format --check`, `pyright` с временным
 `pyrightconfig.json` (pythonPath — окружение предустановленного pytest, `extraPaths` — `src` и каталог с фиктивным
-`obfuscator-<версия>.dist-info` для `importlib.metadata`), `pytest` с `PYTHONPATH=src:<этот каталог>`.
+`obfuscator-<версия>.dist-info` для `importlib.metadata`), `pytest` с `PYTHONPATH=src:<этот каталог>:<каталог со ссылкой на pathspec из /usr/local/lib/python3.13/dist-packages>`;
+для pyright тот же каталог pathspec — в `extraPaths`.
