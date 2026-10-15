@@ -85,3 +85,43 @@ def format_obfuscate(report: Report, aliases: dict[str, str], *, verbose: bool =
     lines.append(f"Копия: {report.locations.get('copy', '')}")
     lines.append(f"Состояние: {report.locations.get('state', '')}")
     return "\n".join(lines) + "\n"
+
+
+def format_restore(report: Report, mode: str, *, verbose: bool = False) -> str:
+    """Отчёт об успешном возврате.
+
+    Args:
+        report: Отчёт сценария.
+        mode: ``worktree`` или ``patch``.
+        verbose: Добавить списки файлов.
+
+    Returns:
+        Текст отчёта.
+    """
+    c = report.counters
+    flag = "--worktree" if mode == "worktree" else "--patch"
+    lines = [
+        f"obfuscator restore {flag} — OK",
+        (
+            f"Изменения: изменено {c.get('modified', 0)}, добавлено {c.get('added', 0)}, "
+            f"удалено {c.get('deleted', 0)}, переименовано {c.get('renamed', 0)}; "
+            f"не перенесено {c.get('not_transferred', 0)}"
+        ),
+        f"Восстановлено замен: {c.get('restored', 0)}",
+    ]
+    if verbose:
+        for category, paths in report.files.items():
+            lines.append(f"{category.capitalize()}: {len(paths)}")
+            lines.extend(f"  {path}" for path in paths)
+    lines.extend(_findings_block("Предупреждения", report.warnings))
+    lines.append("Ошибки: 0")
+    root = report.locations.get("root", "")
+    changed = sum(c.get(key, 0) for key in ("modified", "added", "deleted", "renamed"))
+    if changed == 0:
+        lines.append("Изменений для переноса нет; оригинал и состояние не изменены.")
+    elif mode == "worktree":
+        lines.append(f"Следующий шаг: git -C {root} diff; затем закоммитьте изменения")
+    else:
+        patch = report.locations.get("patch", "")
+        lines.append(f"Патч: {patch}; применить: cd {root} && git apply {patch}")
+    return "\n".join(lines) + "\n"

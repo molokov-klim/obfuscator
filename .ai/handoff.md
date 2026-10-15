@@ -56,7 +56,7 @@
 `scanner.py` (перекрывающийся поиск без учёта регистра, E12/W10/W01/W11), `changes.py`, `merge.py` (построчное
 восстановление: нетронутые строки — из оригинала).
 Оболочка: `gitio.py` (порт `Git` + `SubprocessGit`), `ignore.py`, `inputs.py`, `fsio.py` (временные каталоги и
-замена), `obfuscate.py` (сценарий), `report.py`, `cli.py`. Интеграционные тесты — настоящий git во временных
+замена), `obfuscate.py` и `restore.py` (сценарии), `report.py`, `cli.py`. Интеграционные тесты — настоящий git во временных
 каталогах, проекты строит `tests/factories.py`. Тесты: `tests/unit/`,
 `tests/integration/`. Целевая структура — plan §2.1. Идентификаторы — английские, docstring и сообщения — русские
 (Google style); в тестах docstring не требуются (plan §9 п. 7).

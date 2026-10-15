@@ -2,7 +2,8 @@
 
 import os
 import subprocess
-from collections.abc import Sequence
+import tempfile
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Protocol
 
@@ -38,6 +39,10 @@ class Git(Protocol):
 
     def is_ignored(self, root: Path, path: str) -> bool:
         """Игнорируется ли путь (может не существовать) правилами `.gitignore`."""
+        ...
+
+    def make_patch(self, before: Mapping[str, bytes], after: Mapping[str, bytes | None]) -> bytes:
+        """Патч ``git diff --binary`` от ``before`` к ``after`` (``None`` — удаление); пути относительно корня."""
         ...
 
 
@@ -154,3 +159,36 @@ class SubprocessGit:
         if code not in (0, 1):
             raise ObfuscatorError.single("E26", f"git check-ignore: код {code}: {stderr}")
         return code == 0
+
+    def make_patch(self, before: Mapping[str, bytes], after: Mapping[str, bytes | None]) -> bytes:
+        """Строит патч во временном репозитории (спецификация §4.2.2).
+
+        Args:
+            before: Затронутые файлы оригинала: путь → байты.
+            after: Новые версии: путь → байты или ``None`` для удаления.
+
+        Returns:
+            Патч в формате ``git diff --binary``; пустые байты — изменений нет.
+
+        Raises:
+            ObfuscatorError: E26 — ошибка git.
+        """
+        identity = ("-c", "user.name=obfuscator", "-c", "user.email=obfuscator@localhost", "-c", "commit.gpgsign=false")
+        with tempfile.TemporaryDirectory(prefix="obfuscator-patch-") as directory:
+            work = Path(directory)
+            self.run(["init", "-q"], cwd=work)
+            for relative, data in before.items():
+                target = work / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(data)
+            self.run(["add", "-A", "--force"], cwd=work)
+            self.run([*identity, "commit", "-q", "--allow-empty", "--no-verify", "-m", "base"], cwd=work)
+            for relative, data in after.items():
+                target = work / relative
+                if data is None:
+                    target.unlink(missing_ok=True)
+                else:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(data)
+            self.run(["add", "-A", "--force"], cwd=work)
+            return self.run(["diff", "--cached", "--binary", "--no-color", "--no-renames", "--no-ext-diff"], cwd=work)

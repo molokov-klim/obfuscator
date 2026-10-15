@@ -16,7 +16,8 @@ from obfuscator.errors import ObfuscatorError
 from obfuscator.gitio import Git, SubprocessGit
 from obfuscator.models import Finding
 from obfuscator.obfuscate import run_obfuscate
-from obfuscator.report import finding_line, format_obfuscate, format_refusal
+from obfuscator.report import finding_line, format_obfuscate, format_refusal, format_restore
+from obfuscator.restore import Mode, run_restore
 
 EXIT_OK = 0
 EXIT_REFUSED = 1
@@ -41,6 +42,14 @@ def build_parser() -> argparse.ArgumentParser:
     obfuscate.add_argument("--out", required=True, type=Path, metavar="DIR", help="каталог копии")
     obfuscate.add_argument("--dict", dest="dictionary", metavar="FILE", help="словарь (иначе OBFUSCATOR_DICT)")
     obfuscate.add_argument("--verbose", action="store_true", help="подробности по файлам")
+
+    restore = commands.add_parser("restore", help="вернуть изменения агента в оригинал")
+    restore.add_argument("copy", type=Path, metavar="COPY_DIR", help="каталог копии")
+    how = restore.add_mutually_exclusive_group(required=True)
+    how.add_argument("--worktree", action="store_true", help="записать в рабочее дерево оригинала (только git)")
+    how.add_argument("--patch", type=Path, metavar="FILE", help="записать патч для git apply")
+    restore.add_argument("--dict", dest="dictionary", metavar="FILE", help="словарь (иначе OBFUSCATOR_DICT)")
+    restore.add_argument("--verbose", action="store_true", help="списки файлов")
     return parser
 
 
@@ -57,6 +66,19 @@ def _obfuscate(args: argparse.Namespace, git: Git) -> int:
     dictionary = load_dictionary(resolve_dictionary_path(dictionary_arg))
     report = run_obfuscate(paths, out, dictionary, git)
     sys.stdout.write(format_obfuscate(report, {r.original: r.alias for r in dictionary.rules}, verbose=verbose))
+    _print_findings(report.warnings, sys.stderr)
+    return EXIT_OK
+
+
+def _restore(args: argparse.Namespace, git: Git) -> int:
+    dictionary_arg: str | None = args.dictionary
+    copy: Path = args.copy
+    patch: Path | None = args.patch
+    verbose: bool = args.verbose
+    mode: Mode = "patch" if patch is not None else "worktree"
+    dictionary = load_dictionary(resolve_dictionary_path(dictionary_arg))
+    report = run_restore(copy, mode, dictionary, git, patch_file=patch)
+    sys.stdout.write(format_restore(report, mode, verbose=verbose))
     _print_findings(report.warnings, sys.stderr)
     return EXIT_OK
 
@@ -89,7 +111,8 @@ def main(argv: Sequence[str] | None = None, *, git: Git | None = None) -> int:
         parser.print_help(sys.stderr)
         return EXIT_USAGE
     try:
-        return _obfuscate(args, git or SubprocessGit())
+        port = git or SubprocessGit()
+        return _obfuscate(args, port) if command == "obfuscate" else _restore(args, port)
     except ObfuscatorError as error:
         sys.stdout.write(format_refusal(f"obfuscator {command}", error.findings))
         _print_findings(error.findings, sys.stderr)
