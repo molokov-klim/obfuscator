@@ -1,10 +1,10 @@
 """Поиск строк без учёта регистра: утечки оригиналов и алиасы в другом регистре (спецификация §5.5, §5.7 п. 11).
 
-Без учёта регистра здесь — флаг ``re.IGNORECASE`` (простое сопоставление регистра Unicode); для байтов — только
-латинские буквы ASCII.
+Без учёта регистра здесь — сравнение после ``str.lower()`` (для байтов — только латинские буквы ASCII): текст и
+искомые строки приводятся к нижнему регистру, и ищется точное совпадение. Это в разы быстрее ``re.IGNORECASE`` на
+больших словарях. Если ``lower()`` меняет длину текста (редкие символы вроде «İ»), используется ``re.IGNORECASE``.
 """
 
-import bisect
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from obfuscator.allow import AllowList
 from obfuscator.errors import finding
 from obfuscator.models import Finding
+from obfuscator.trie import trie_pattern
 
 
 @dataclass(frozen=True)
@@ -39,18 +40,19 @@ class Scanner:
             needles: Искомые строки; пустые игнорируются.
             ignore_case: Искать без учёта регистра (по умолчанию) или точно.
         """
-        flags = re.IGNORECASE if ignore_case else 0
-        items = sorted({needle for needle in needles if needle}, key=lambda key: (-len(key), key))
-        self._pattern = (
-            re.compile("(?=(" + "|".join(re.escape(item) for item in items) + "))", flags) if items else None
-        )
-        encoded = sorted({item.encode() for item in items}, key=lambda key: (-len(key), key))
-        self._bytes_pattern = (
-            re.compile(b"(?=(" + b"|".join(re.escape(item) for item in encoded) + b"))", flags) if encoded else None
-        )
+        self._ignore_case = ignore_case
+        items = {needle for needle in needles if needle}
+        keys = {item.lower() for item in items} if ignore_case else items
+        pattern = trie_pattern(keys)
+        self._pattern = re.compile(pattern) if keys else None
+        self._fallback = re.compile(pattern, re.IGNORECASE) if keys and ignore_case else None
+        # Байты — через latin-1: каждый байт становится одним символом, выражение кодируется обратно без потерь.
+        byte_keys = {item.encode().lower() if ignore_case else item.encode() for item in items}
+        byte_pattern = trie_pattern(key.decode("latin-1") for key in byte_keys)
+        self._bytes_pattern = re.compile(byte_pattern.encode("latin-1")) if byte_keys else None
 
     def find(self, text: str) -> list[Match]:
-        """Находит все вхождения; в одной позиции — самое длинное.
+        """Находит все вхождения, в том числе перекрывающиеся; в одной позиции — самое длинное.
 
         Args:
             text: Текст.
@@ -60,11 +62,23 @@ class Scanner:
         """
         if self._pattern is None:
             return []
-        newlines = [index for index, ch in enumerate(text) if ch == "\n"]
-        return [
-            Match(start=m.start(), text=m.group(1), line=bisect.bisect_left(newlines, m.start()) + 1)
-            for m in self._pattern.finditer(text)
-        ]
+        pattern, haystack = self._pattern, text
+        if self._ignore_case:
+            lowered = text.lower()
+            if len(lowered) == len(text):
+                haystack = lowered
+            else:
+                assert self._fallback is not None
+                pattern = self._fallback
+        matches: list[Match] = []
+        line, previous, position = 1, 0, 0
+        while (m := pattern.search(haystack, position)) is not None:
+            start = m.start()
+            line += text.count("\n", previous, start)
+            previous = start
+            matches.append(Match(start=start, text=text[start : m.end()], line=line))
+            position = start + 1
+        return matches
 
     def find_bytes(self, data: bytes) -> list[bytes]:
         """Находит вхождения UTF-8 байтов строк; регистр игнорируется только для латинских букв ASCII.
@@ -77,7 +91,13 @@ class Scanner:
         """
         if self._bytes_pattern is None:
             return []
-        return [m.group(1) for m in self._bytes_pattern.finditer(data)]
+        haystack = data.lower() if self._ignore_case else data
+        found: list[bytes] = []
+        position = 0
+        while (m := self._bytes_pattern.search(haystack, position)) is not None:
+            found.append(data[m.start() : m.end()])
+            position = m.start() + 1
+        return found
 
 
 def leak_findings(scanner: Scanner, text: str, path: str, allow: AllowList, code: str) -> list[Finding]:

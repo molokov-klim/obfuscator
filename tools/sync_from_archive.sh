@@ -55,6 +55,14 @@ is_excluded() {
     return 1
 }
 
+# exec_bits <файл> — биты исполнения из прав (x/-) владельца, группы, остальных. Не [[ -x ]]: он проверяет право
+# запуска и врёт на файловых системах с noexec (например, /tmp), где распаковывается архив.
+exec_bits() {
+    local mode
+    mode="$(stat -c %A -- "$1")"
+    printf '%s%s%s' "${mode:3:1}" "${mode:6:1}" "${mode:9:1}"
+}
+
 # --- Аргументы и окружение ----------------------------------------------------------------------------------------
 
 [[ $# -eq 1 ]] || die "нужен один аргумент — путь к архиву поставки" \
@@ -164,7 +172,7 @@ for rel in "${ARCHIVE_FILES[@]}"; do
     elif ! cmp -s "$SRC/$rel" "$rel"; then
         TO_CHANGE+=("$rel")
         CHANGE_NOTE+=("$rel")
-    elif [[ -x "$SRC/$rel" && ! -x "$rel" ]] || [[ ! -x "$SRC/$rel" && -x "$rel" ]]; then
+    elif [[ "$(exec_bits "$SRC/$rel")" != "$(exec_bits "$rel")" ]]; then
         TO_CHANGE+=("$rel")
         CHANGE_NOTE+=("$rel (только бит исполнения: в архиве $(stat -c %A "$SRC/$rel"), в рабочей копии $(stat -c %A "$rel"))")
     fi

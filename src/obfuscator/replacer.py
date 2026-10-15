@@ -5,13 +5,15 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 
 from obfuscator.models import Rule
+from obfuscator.trie import trie_pattern
 
 
 class Replacer:
     """Замена строк по таблице «источник → цель» одним регулярным выражением.
 
-    Источники сортируются по убыванию длины, затем лексикографически: в каждой позиции берётся самый длинный
-    подходящий источник, порядок не зависит от порядка правил (NFR-010). Регистр учитывается, границы слов — нет.
+    Выражение строится из префиксного дерева источников (``trie.py``): в каждой позиции берётся самый длинный
+    подходящий источник, результат не зависит от порядка правил (NFR-010), время — линейно от длины текста
+    (NFR-020). Регистр учитывается, границы слов — нет.
     """
 
     def __init__(self, table: Mapping[str, str]) -> None:
@@ -26,8 +28,7 @@ class Replacer:
         if "" in table:
             raise ValueError("пустой источник замены")
         self.table: dict[str, str] = dict(table)
-        keys = sorted(self.table, key=lambda key: (-len(key), key))
-        self._pattern = re.compile("|".join(re.escape(key) for key in keys)) if keys else None
+        self._pattern = re.compile(trie_pattern(self.table)) if self.table else None
 
     def replace(self, text: str) -> tuple[str, Counter[str]]:
         """Заменяет все вхождения источников.

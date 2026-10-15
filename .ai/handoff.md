@@ -52,7 +52,8 @@
 Пакет `src/obfuscator/` (hatchling): `cli.py` — `main(argv) -> int`, коды выхода 0/1/2; `errors.py` — коды §7 и
 `ObfuscatorError` (список находок); `models.py`; `dictionary.py`, `allow.py`, `state.py`; `narrow.py` — сужение
 типов `tomllib`/`json` для pyright strict. Отказы собирают все находки сразу, а не первую.
-Чистое ядро (без файлов и git): `replacer.py` (один проход, самый длинный источник), `paths.py` (E10/W02),
+Чистое ядро (без файлов и git): `trie.py` (регулярное выражение из префиксного дерева — обязательно для скорости),
+`replacer.py` (один проход, самый длинный источник), `paths.py` (E10/W02),
 `scanner.py` (перекрывающийся поиск без учёта регистра, E12/W10/W01/W11), `changes.py`, `merge.py` (построчное
 восстановление: нетронутые строки — из оригинала).
 Оболочка: `gitio.py` (порт `Git` + `SubprocessGit`), `ignore.py`, `inputs.py`, `fsio.py` (временные каталоги и
