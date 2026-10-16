@@ -1,6 +1,6 @@
 [project]
 name = "obfuscator"
-version = "0.6.1"
+version = "0.6.2"
 description = "Лексический обфускатор проекта для безопасной работы с LLM-агентом"
 readme = "README.md"
 license = "MIT"

@@ -125,6 +125,15 @@ CURRENT_BRANCH="$(git branch --show-current)"
 [[ "$CURRENT_BRANCH" == "$BRANCH" ]] \
     || die "текущая ветка '$CURRENT_BRANCH', а поставка для '$BRANCH'" "переключитесь: git switch $BRANCH"
 
+APPLIED_COMMIT="$(git rev-parse -q --verify "refs/tags/sdd/$VERSION^{commit}" || true)"
+if [[ -n "$APPLIED_COMMIT" ]]; then
+    if [[ "$APPLIED_COMMIT" == "$(git rev-parse HEAD)" ]]; then
+        die "поставка $VERSION уже применена: тег sdd/$VERSION стоит на HEAD — делать ничего не нужно"
+    fi
+    die "тег sdd/$VERSION уже есть, но не на HEAD — поставка $VERSION применялась раньше" \
+        "сообщите ассистенту вывод: git log --oneline -3 sdd/$VERSION"
+fi
+
 if [[ "$BASE" != "none" ]]; then
     BASE_COMMIT="$(git rev-parse -q --verify "refs/tags/sdd/$BASE^{commit}" || true)"
     [[ -n "$BASE_COMMIT" ]] || die "нет тега sdd/$BASE — предыдущая поставка не применена" \
