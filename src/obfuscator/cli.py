@@ -16,7 +16,7 @@ from obfuscator.errors import ObfuscatorError
 from obfuscator.gitio import Git, SubprocessGit
 from obfuscator.models import Finding
 from obfuscator.obfuscate import run_obfuscate
-from obfuscator.report import finding_line, format_obfuscate, format_refusal, format_restore
+from obfuscator.report import format_obfuscate, format_refusal, format_restore, summary_lines
 from obfuscator.restore import Mode, run_restore
 
 EXIT_OK = 0
@@ -53,9 +53,9 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _print_findings(items: list[Finding], stream: TextIO) -> None:
-    for item in items:
-        print(finding_line(item), file=stream)
+def _print_findings(items: list[Finding], stream: TextIO, *, verbose: bool = False) -> None:
+    for line in summary_lines(items, verbose=verbose):
+        print(line, file=stream)
 
 
 def _obfuscate(args: argparse.Namespace, git: Git) -> int:
@@ -66,7 +66,7 @@ def _obfuscate(args: argparse.Namespace, git: Git) -> int:
     dictionary = load_dictionary(resolve_dictionary_path(dictionary_arg))
     report = run_obfuscate(paths, out, dictionary, git)
     sys.stdout.write(format_obfuscate(report, {r.original: r.alias for r in dictionary.rules}, verbose=verbose))
-    _print_findings(report.warnings, sys.stderr)
+    _print_findings(report.warnings, sys.stderr, verbose=verbose)
     return EXIT_OK
 
 
@@ -79,7 +79,7 @@ def _restore(args: argparse.Namespace, git: Git) -> int:
     dictionary = load_dictionary(resolve_dictionary_path(dictionary_arg))
     report = run_restore(copy, mode, dictionary, git, patch_file=patch)
     sys.stdout.write(format_restore(report, mode, verbose=verbose))
-    _print_findings(report.warnings, sys.stderr)
+    _print_findings(report.warnings, sys.stderr, verbose=verbose)
     return EXIT_OK
 
 
@@ -114,6 +114,7 @@ def main(argv: Sequence[str] | None = None, *, git: Git | None = None) -> int:
         port = git or SubprocessGit()
         return _obfuscate(args, port) if command == "obfuscate" else _restore(args, port)
     except ObfuscatorError as error:
-        sys.stdout.write(format_refusal(f"obfuscator {command}", error.findings))
-        _print_findings(error.findings, sys.stderr)
+        verbose = bool(getattr(args, "verbose", False))
+        sys.stdout.write(format_refusal(f"obfuscator {command}", error.findings, verbose=verbose))
+        _print_findings(error.findings, sys.stderr, verbose=verbose)
         return EXIT_REFUSED

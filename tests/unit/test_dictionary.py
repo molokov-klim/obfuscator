@@ -135,3 +135,10 @@ def test_resolve_without_any_value_is_e01() -> None:
     with pytest.raises(ObfuscatorError) as info:
         resolve_dictionary_path(None, {})
     assert _codes(info.value) == ["E01"]
+
+
+def test_dotted_bare_key_has_hint() -> None:
+    with pytest.raises(ObfuscatorError) as info:
+        parse_dictionary(b'[rules]\ndb.pepelac.internal = "host-a7.example"\n', "t")
+    assert _codes(info.value) == ["E01"]
+    assert "в кавычки" in info.value.findings[0].message

@@ -104,6 +104,13 @@ def parse_dictionary(data: bytes, source: str) -> tuple[Rule, ...]:
 
     rules: list[Rule] = []
     for original, alias in table.items():
+        if as_table(alias) is not None:
+            raise ObfuscatorError.single(
+                "E01",
+                f"{source}: ключ «{original}» прочитан как таблица — в TOML точка в ключе без кавычек означает "
+                f'вложенность; оригинал с точкой возьмите в кавычки: "{original}.…" = "…"',
+                text=original,
+            )
         if not isinstance(alias, str):
             raise ObfuscatorError.single("E01", f"{source}: алиас для «{original}» должен быть строкой", text=original)
         rules.append(Rule(original=original, alias=alias))

@@ -18,27 +18,93 @@ def finding_line(item: Finding) -> str:
     return f"{item.code} {where} {item.message}" if where else f"{item.code} {item.message}"
 
 
-def _findings_block(title: str, items: list[Finding]) -> list[str]:
-    lines = [f"{title}: {len(items)}"]
-    lines.extend(f"  {finding_line(item)}" for item in items)
+SAMPLE_PLACES = 3
+_LEAK_HINT = "  → добавьте каждое написание в словарь отдельным правилом или в .obfallow.toml"
+
+
+def _plural(count: int) -> str:
+    if count % 10 == 1 and count % 100 != 11:
+        return "находка"
+    if count % 10 in (2, 3, 4) and count % 100 not in (12, 13, 14):
+        return "находки"
+    return "находок"
+
+
+def _place(item: Finding) -> str:
+    place = item.path or ""
+    return f"{place}:{item.line}" if item.line is not None else place
+
+
+def summary_lines(items: list[Finding], *, verbose: bool = False) -> list[str]:
+    """Строки находок: без ``verbose`` одинаковые находки (код + написание) сворачиваются в одну строку.
+
+    Свёрнутая строка: ``<код> «<написание>» — <N> находок: <первые места>, …``. Порядок групп — по первому
+    появлению; находки без написания не сворачиваются.
+
+    Args:
+        items: Находки.
+        verbose: Не сворачивать.
+
+    Returns:
+        Строки без отступа и перевода строки.
+    """
+    if verbose:
+        return [finding_line(item) for item in items]
+    groups: dict[tuple[str, str], list[Finding]] = {}
+    order: list[tuple[str, str] | Finding] = []
+    for item in items:
+        if item.text is None:
+            order.append(item)
+            continue
+        key = (item.code, item.text)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(item)
+    lines: list[str] = []
+    for entry in order:
+        if isinstance(entry, Finding):
+            lines.append(finding_line(entry))
+            continue
+        group = groups[entry]
+        if len(group) == 1:
+            lines.append(finding_line(group[0]))
+            continue
+        code, text = entry
+        places = ", ".join(_place(item) for item in group[:SAMPLE_PLACES])
+        more = ", …" if len(group) > SAMPLE_PLACES else ""
+        lines.append(f"{code} «{text}» — {len(group)} {_plural(len(group))}: {places}{more}")
     return lines
 
 
-def format_refusal(command: str, errors: list[Finding], warnings: list[Finding] | None = None) -> str:
+def _findings_block(title: str, items: list[Finding], *, verbose: bool = False) -> list[str]:
+    lines = [f"{title}: {len(items)}"]
+    lines.extend(f"  {line}" for line in summary_lines(items, verbose=verbose))
+    if not verbose and any(item.code == "E12" for item in items):
+        lines.append(_LEAK_HINT)
+    if not verbose and len(summary_lines(items)) < len(items):
+        lines.append("  (одинаковые находки свёрнуты; полный список — с --verbose)")
+    return lines
+
+
+def format_refusal(
+    command: str, errors: list[Finding], warnings: list[Finding] | None = None, *, verbose: bool = False
+) -> str:
     """Отчёт об отказе.
 
     Args:
         command: Заголовок команды, например ``obfuscator obfuscate``.
         errors: Ошибки.
         warnings: Предупреждения, если успели появиться.
+        verbose: Полный список находок без свёртки.
 
     Returns:
         Текст отчёта.
     """
     lines = [f"{command} — ОТКАЗ"]
-    lines.extend(_findings_block("Ошибки", errors))
+    lines.extend(_findings_block("Ошибки", errors, verbose=verbose))
     if warnings:
-        lines.extend(_findings_block("Предупреждения", warnings))
+        lines.extend(_findings_block("Предупреждения", warnings, verbose=verbose))
     lines.append("Ничего не изменено.")
     return "\n".join(lines) + "\n"
 
@@ -80,7 +146,7 @@ def format_obfuscate(report: Report, aliases: dict[str, str], *, verbose: bool =
         for category, paths in report.files.items():
             lines.append(f"{category.capitalize()}: {len(paths)}")
             lines.extend(f"  {path}" for path in paths)
-    lines.extend(_findings_block("Предупреждения", report.warnings))
+    lines.extend(_findings_block("Предупреждения", report.warnings, verbose=verbose))
     lines.append("Ошибки: 0")
     lines.append(f"Копия: {report.locations.get('copy', '')}")
     lines.append(f"Состояние: {report.locations.get('state', '')}")
@@ -113,7 +179,7 @@ def format_restore(report: Report, mode: str, *, verbose: bool = False) -> str:
         for category, paths in report.files.items():
             lines.append(f"{category.capitalize()}: {len(paths)}")
             lines.extend(f"  {path}" for path in paths)
-    lines.extend(_findings_block("Предупреждения", report.warnings))
+    lines.extend(_findings_block("Предупреждения", report.warnings, verbose=verbose))
     lines.append("Ошибки: 0")
     root = report.locations.get("root", "")
     changed = sum(c.get(key, 0) for key in ("modified", "added", "deleted", "renamed"))

@@ -287,3 +287,15 @@ def test_cli_refusal_exit_code_and_stderr(tmp_path: Path, dictionary: Path, caps
     assert code == EXIT_REFUSED
     assert "— ОТКАЗ" in captured.out
     assert captured.err.startswith("E07 ")
+
+
+def test_cli_collapses_many_leaks(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    dictionary = make_dictionary(tmp_path / "d.toml", '[rules]\n"Pepelac" = "Zqv"\n')
+    project = make_project(tmp_path / "proj", {f"f{i}.txt": "pepelac\n" * 3 for i in range(20)}, use_git=False)
+    args = ["obfuscate", str(project), "--out", str(tmp_path / "copy"), "--dict", str(dictionary)]
+    assert main(args) == EXIT_REFUSED
+    captured = capsys.readouterr()
+    assert "E12 «pepelac» — 60 находок" in captured.out
+    assert len(captured.err.splitlines()) == 1
+    assert main([*args, "--verbose"]) == EXIT_REFUSED
+    assert len(capsys.readouterr().err.splitlines()) == 60
