@@ -22,9 +22,10 @@ SERVICE_EXCLUDES=("/.git" "/.venv" "__pycache__" ".pytest_cache" ".ruff_cache" "
 # Файлы, которые порождаются на стороне владельца и коммитятся им (uv sync).
 GENERATED_EXCLUDES=("/uv.lock")
 # Файлы владельца: не попадают в архивы, обязаны игнорироваться git.
-USER_EXCLUDES=("/.idea" "/dictionary.toml" "/runs" "/logs" "*.obfstate")
+USER_EXCLUDES=("/.idea" "/dictionary.toml" "/dictionaries" "/runs" "/logs" "*.obfstate")
 # Пути для проверки git check-ignore (каталоги — с "/" в конце).
-USER_IGNORE_PROBES=(".idea/" "dictionary.toml" "runs/" "logs/" "sample.obfstate/")
+USER_IGNORE_PROBES=(".idea/" "dictionary.toml" "dictionary.sample.toml" "dictionaries/" "dictionaries/sample.toml"
+                    "runs/" "logs/" "sample.obfstate/")
 
 ALL_EXCLUDES=("${SERVICE_EXCLUDES[@]}" "${GENERATED_EXCLUDES[@]}" "${USER_EXCLUDES[@]}")
 
@@ -138,8 +139,13 @@ if [[ "$BASE" != "none" ]]; then
     BASE_COMMIT="$(git rev-parse -q --verify "refs/tags/sdd/$BASE^{commit}" || true)"
     [[ -n "$BASE_COMMIT" ]] || die "нет тега sdd/$BASE — предыдущая поставка не применена" \
         "примените поставку $BASE или сообщите ассистенту"
-    if [[ "$BASE_COMMIT" != "$(git rev-parse HEAD)" ]]; then
-        echo "После поставки $BASE в ветке есть коммиты:" >&2
+    if [[ "$BASE_COMMIT" != "$(git rev-parse HEAD)" ]] \
+        && git merge-base --is-ancestor "$BASE_COMMIT" HEAD \
+        && git diff --quiet "$BASE_COMMIT" HEAD --; then
+        echo "После поставки $BASE есть коммиты без изменений файлов (например, слияние) — продолжаю:"
+        git --no-pager log --oneline --no-color "sdd/$BASE..HEAD" || true
+    elif [[ "$BASE_COMMIT" != "$(git rev-parse HEAD)" ]]; then
+        echo "После поставки $BASE в ветке есть коммиты с изменениями файлов:" >&2
         git --no-pager log --oneline --no-color "sdd/$BASE..HEAD" >&2 || true
         die "HEAD не совпадает с поставкой $BASE" \
             "отправьте ассистенту вывод: git diff sdd/$BASE..HEAD" \

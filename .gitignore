@@ -221,6 +221,9 @@ __marimo__/
 
 # obfuscator — файлы владельца и служебные каталоги проекта
 /dictionary.toml
+/dictionary.*.toml
+!/dictionary.example.toml
+/dictionaries/
 /runs/
 /logs/
 /.idea/
