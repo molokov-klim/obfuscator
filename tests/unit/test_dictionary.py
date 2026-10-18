@@ -142,3 +142,55 @@ def test_dotted_bare_key_has_hint() -> None:
         parse_dictionary(b'[rules]\ndb.pepelac.internal = "host-a7.example"\n', "t")
     assert _codes(info.value) == ["E01"]
     assert "в кавычки" in info.value.findings[0].message
+
+
+def test_words_table_parsed_with_flag() -> None:
+    rules = parse_dictionary(b'[rules]\n"Pepelac" = "Zqv"\n[words]\n"sim" = "qx"\n', "t")
+    assert rules == (Rule("Pepelac", "Zqv"), Rule("sim", "qx", word=True))
+
+
+def test_only_words_table_is_enough(tmp_path: Path) -> None:
+    path = tmp_path / "d.toml"
+    path.write_bytes(b'[words]\n"sim" = "qx"\n')
+    assert load_dictionary(path).rules == (Rule("sim", "qx", word=True),)
+
+
+def test_no_tables_is_e01() -> None:
+    with pytest.raises(ObfuscatorError) as info:
+        parse_dictionary(b"x = 1\n", "t")
+    assert _codes(info.value) == ["E01"]
+
+
+def test_empty_both_tables_is_e02(tmp_path: Path) -> None:
+    path = tmp_path / "d.toml"
+    path.write_bytes(b"[rules]\n[words]\n")
+    with pytest.raises(ObfuscatorError) as info:
+        load_dictionary(path)
+    assert _codes(info.value) == ["E02"]
+
+
+@pytest.mark.parametrize(
+    ("original", "alias"),
+    [("sim", "Qx"), ("sim", "qX"), ("Sim", "qx"), ("SIM", "Qx"), ("sim", "1x"), ("v2", "qx"), ("вий", "Qx")],
+)
+def test_word_alias_kind_mismatch_is_e14(original: str, alias: str) -> None:
+    assert "E14" in [f.code for f in validate_rules([Rule(original, alias, word=True)])]
+
+
+@pytest.mark.parametrize(
+    ("original", "alias"), [("sim", "qx"), ("Sim", "Qx"), ("SIM", "QX"), ("v2", "q7"), ("вий", "qzx")]
+)
+def test_word_alias_kind_match_is_valid(original: str, alias: str) -> None:
+    assert validate_rules([Rule(original, alias, word=True)]) == []
+
+
+def test_same_original_in_both_tables_is_e14() -> None:
+    problems = validate_rules([Rule("sim", "qx"), Rule("sim", "wk", word=True)])
+    assert "E14" in [f.code for f in problems]
+
+
+def test_short_substring_rule_warns_w04(tmp_path: Path) -> None:
+    path = tmp_path / "d.toml"
+    path.write_bytes(b'[rules]\n"sim" = "qxz"\n"Pepelac" = "Zqv"\n[words]\n"vi" = "wk"\n')
+    warnings = load_dictionary(path).warnings
+    assert [(f.code, f.text) for f in warnings] == [("W04", "sim")]

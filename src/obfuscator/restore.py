@@ -90,9 +90,9 @@ def _plan(state: State, dictionary: Dictionary, copy_dir: Path, state_dir: Path,
     rules = dictionary.rules
     bwd = backward(rules)
     allow = load_allow(root)
-    leak_scanner = Scanner(rule.original for rule in rules)
+    leak_scanner = Scanner.originals(rules)
     aliases = frozenset(rule.alias for rule in rules)
-    alias_scanner = Scanner(aliases)
+    alias_scanner = Scanner.aliases(rules, ignore_case=True)
     ignore = IgnoreRules(root)
     by_copy = {entry.copy_path: entry for entry in state.files}
 

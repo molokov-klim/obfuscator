@@ -61,3 +61,23 @@ def test_alias_in_other_case_is_w11() -> None:
     found = case_mismatch_findings(Scanner(aliases), aliases, "Zqv zqv ZQV zQv", "a.py")
     assert [f.text for f in found] == ["ZQV", "zQv"]
     assert {f.code for f in found} == {"W11"}
+
+
+def test_word_originals_found_only_at_boundaries() -> None:
+    from obfuscator.models import Rule
+
+    scanner = Scanner.originals([Rule("sim", "qx", word=True), Rule("Pepelac", "Zqv")])
+    found = scanner.find("simple service\nuse SIM_x and MySim\npepelacX")
+    assert [(m.text, m.line) for m in found] == [("SIM", 2), ("Sim", 2), ("pepelac", 3)]
+
+
+def test_word_aliases_exact_at_boundaries() -> None:
+    from obfuscator.models import Rule
+
+    scanner = Scanner.aliases([Rule("sim", "qx", word=True)], ignore_case=False)
+    assert [m.text for m in scanner.find("aqxb qx qX")] == ["qx"]
+
+
+def test_word_bytes_ascii_boundaries() -> None:
+    scanner = Scanner([], words=["sim"])
+    assert scanner.find_bytes(b"\x00SIM\x01simple") == [b"SIM"]

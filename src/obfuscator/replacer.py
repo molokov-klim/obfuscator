@@ -1,34 +1,37 @@
 """Прямая и обратная замена за один проход (спецификация §5.3)."""
 
-import re
 from collections import Counter
 from collections.abc import Iterable, Mapping
 
+from obfuscator.matcher import Matcher
 from obfuscator.models import Rule
-from obfuscator.trie import trie_pattern
 
 
 class Replacer:
-    """Замена строк по таблице «источник → цель» одним регулярным выражением.
+    """Замена строк по таблице «источник → цель».
 
-    Выражение строится из префиксного дерева источников (``trie.py``): в каждой позиции берётся самый длинный
-    подходящий источник, результат не зависит от порядка правил (NFR-010), время — линейно от длины текста
-    (NFR-020). Регистр учитывается, границы слов — нет.
+    Кандидаты ищутся регулярным выражением из префиксного дерева (``trie.py``, ``matcher.py``): в каждой позиции
+    берётся самый длинный подходящий источник; источники «по словам» подходят только на границе слова (FR-071).
+    Результат не зависит от порядка правил (NFR-010), время линейно от длины текста (NFR-020). Регистр учитывается.
     """
 
-    def __init__(self, table: Mapping[str, str]) -> None:
+    def __init__(self, table: Mapping[str, str], words: Iterable[str] = ()) -> None:
         """Создаёт заменитель.
 
         Args:
             table: Источник → цель; пустые источники не допускаются.
+            words: Источники, которые заменяются только на границе слова.
 
         Raises:
-            ValueError: Пустой источник.
+            ValueError: Пустой источник или источник «по словам» вне таблицы.
         """
         if "" in table:
             raise ValueError("пустой источник замены")
         self.table: dict[str, str] = dict(table)
-        self._pattern = re.compile(trie_pattern(self.table)) if self.table else None
+        self.words = frozenset(words)
+        if not self.words <= self.table.keys():
+            raise ValueError("источник «по словам» отсутствует в таблице")
+        self._matcher = Matcher({key: key in self.words for key in self.table})
 
     def replace(self, text: str) -> tuple[str, Counter[str]]:
         """Заменяет все вхождения источников.
@@ -40,15 +43,17 @@ class Replacer:
             Текст после замены и счётчик замен по источникам.
         """
         counts: Counter[str] = Counter()
-        if self._pattern is None:
+        parts: list[str] = []
+        position = 0
+        for hit in self._matcher.iter_hits(text):
+            parts.append(text[position : hit.start])
+            parts.append(self.table[hit.key])
+            counts[hit.key] += 1
+            position = hit.end
+        if not counts:
             return text, counts
-
-        def substitute(match: re.Match[str]) -> str:
-            source = match.group(0)
-            counts[source] += 1
-            return self.table[source]
-
-        return self._pattern.sub(substitute, text), counts
+        parts.append(text[position:])
+        return "".join(parts), counts
 
     def apply(self, text: str) -> str:
         """Заменяет все вхождения источников без подсчёта.
@@ -71,7 +76,8 @@ def forward(rules: Iterable[Rule]) -> Replacer:
     Returns:
         Заменитель прямой замены.
     """
-    return Replacer({rule.original: rule.alias for rule in rules})
+    items = list(rules)
+    return Replacer({rule.original: rule.alias for rule in items}, (rule.original for rule in items if rule.word))
 
 
 def backward(rules: Iterable[Rule]) -> Replacer:
@@ -83,4 +89,5 @@ def backward(rules: Iterable[Rule]) -> Replacer:
     Returns:
         Заменитель обратной замены.
     """
-    return Replacer({rule.alias: rule.original for rule in rules})
+    items = list(rules)
+    return Replacer({rule.alias: rule.original for rule in items}, (rule.alias for rule in items if rule.word))

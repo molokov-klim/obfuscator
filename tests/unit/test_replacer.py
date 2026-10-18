@@ -49,3 +49,32 @@ def test_empty_table_returns_text() -> None:
 def test_empty_source_is_rejected() -> None:
     with pytest.raises(ValueError, match="пустой"):
         Replacer({"": "x"})
+
+
+WORDS = [
+    Rule("sim", "qx", word=True),
+    Rule("Sim", "Qx", word=True),
+    Rule("SIM", "QX", word=True),
+    Rule("Pepelac", "Zqv"),
+]
+
+
+def test_word_rules_sc015_examples() -> None:
+    text = "sim-x _sim# sim2 sim_client simClient MySim SimRunner SIM_X | simple assimilate SIMPLE Simulator"
+    expected = "qx-x _qx# qx2 qx_client qxClient MyQx QxRunner QX_X | simple assimilate SIMPLE Simulator"
+    assert forward(WORDS).apply(text) == expected
+    assert backward(WORDS).apply(expected) == text
+
+
+def test_word_and_substring_rules_together() -> None:
+    text = "PepelacSim sim.Pepelac"
+    assert forward(WORDS).apply(text) == "ZqvQx qx.Zqv"
+
+
+def test_word_alias_inside_word_is_not_restored() -> None:
+    assert backward(WORDS).apply("qxz and qx") == "qxz and sim"
+
+
+def test_words_must_be_in_table() -> None:
+    with pytest.raises(ValueError, match="по словам"):
+        Replacer({"a": "b"}, words=["c"])

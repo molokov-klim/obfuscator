@@ -313,3 +313,19 @@ def test_copy_can_be_moved_away_and_state_found(tmp_path: Path, dictionary: Dict
     with pytest.raises(ObfuscatorError) as info:
         run_restore(copy, "worktree", dictionary, GIT)
     assert _codes(info.value) == {"E20"}
+
+
+def test_word_rules_full_cycle(tmp_path: Path) -> None:
+    dictionary = load_dictionary(make_dictionary(tmp_path / "d.toml", '[words]\n"sim" = "qx"\n"Sim" = "Qx"\n'))
+    project = make_project(tmp_path / "proj", {"sim_client.py": "class SimClient:\n    def simple(self): ...\n"})
+    copy = tmp_path / "copy"
+    run_obfuscate([project], copy, dictionary, GIT)
+    assert (copy / "qx_client.py").read_text(encoding="utf-8") == "class QxClient:\n    def simple(self): ...\n"
+    (copy / "qx_client.py").write_text(
+        "class QxClient:\n    def simple(self): ...\n    def qx_id(self): return 'Qx'\n", encoding="utf-8"
+    )
+    report = run_restore(copy, "worktree", dictionary, GIT)
+    assert (project / "sim_client.py").read_text(encoding="utf-8") == (
+        "class SimClient:\n    def simple(self): ...\n    def sim_id(self): return 'Sim'\n"
+    )
+    assert report.warnings == []

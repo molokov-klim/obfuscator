@@ -120,7 +120,7 @@ def run_obfuscate(paths: list[Path], out: Path, dictionary: Dictionary, git: Git
     fwd, bwd = forward(rules), backward(rules)
 
     # §5.6 п. 3: алиасы не должны встречаться в проекте.
-    alias_scanner = Scanner((rule.alias for rule in rules), ignore_case=False)
+    alias_scanner = Scanner.aliases(rules, ignore_case=False)
     alias_hits: list[Finding] = []
     for source in sources:
         for match in alias_scanner.find(source.path):
@@ -138,8 +138,8 @@ def run_obfuscate(paths: list[Path], out: Path, dictionary: Dictionary, git: Git
     entries: list[FileEntry] = []
     pairs: list[PathPair] = []
     errors: list[Finding] = []
-    warnings: list[Finding] = list(inputs.skipped)
-    leak_scanner = Scanner(rule.original for rule in rules)
+    warnings: list[Finding] = [*dictionary.warnings, *inputs.skipped]
+    leak_scanner = Scanner.originals(rules)
 
     for source in sources:
         copy_path = transform_path(source.path, fwd)
