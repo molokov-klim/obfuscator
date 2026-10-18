@@ -14,10 +14,12 @@ class Rule:
     Attributes:
         original: Оригинал, сравнивается с учётом регистра.
         alias: Алиас, которым оригинал заменяется в копии.
+        word: Правило по словам (таблица ``[words]``): замена только на границе слова (FR-070).
     """
 
     original: str
     alias: str
+    word: bool = False
 
 
 @dataclass(frozen=True)

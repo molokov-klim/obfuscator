@@ -299,3 +299,43 @@ def test_cli_collapses_many_leaks(tmp_path: Path, capsys: pytest.CaptureFixture[
     assert len(captured.err.splitlines()) == 1
     assert main([*args, "--verbose"]) == EXIT_REFUSED
     assert len(capsys.readouterr().err.splitlines()) == 60
+
+
+WORDS_DICTIONARY = """[rules]
+"Pepelac" = "Zqv"
+
+[words]
+"sim" = "qx"
+"Sim" = "Qx"
+"SIM" = "QX"
+"""
+
+
+def test_word_rules_sc015(tmp_path: Path) -> None:
+    dictionary = make_dictionary(tmp_path / "d.toml", WORDS_DICTIONARY)
+    source = "sim-x _sim# sim2 sim_client simClient MySim SimRunner SIM_X\nsimple assimilate SIMPLE Simulator Pepelac\n"
+    project = make_project(tmp_path / "proj", {"sim/sim_main.py": source, "simple.py": "x"}, use_git=False)
+    report = run_obfuscate([project], tmp_path / "copy", load_dictionary(dictionary), GIT)
+    copy = tree_bytes(tmp_path / "copy")
+    assert set(copy) == {"qx/qx_main.py", "simple.py"}
+    assert copy["qx/qx_main.py"].decode() == (
+        "qx-x _qx# qx2 qx_client qxClient MyQx QxRunner QX_X\nsimple assimilate SIMPLE Simulator Zqv\n"
+    )
+    assert report.per_rule == {"Pepelac": 1, "sim": 5, "Sim": 2, "SIM": 1}
+
+
+def test_word_alias_inside_word_is_not_e09(tmp_path: Path) -> None:
+    dictionary = make_dictionary(tmp_path / "d.toml", '[words]\n"sim" = "qx"\n')
+    project = make_project(tmp_path / "proj", {"a.txt": "aqxb sim\n"}, use_git=False)
+    run_obfuscate([project], tmp_path / "copy", load_dictionary(dictionary), GIT)
+    project2 = make_project(tmp_path / "proj2", {"a.txt": "qx sim\n"}, use_git=False)
+    with pytest.raises(ObfuscatorError) as info:
+        run_obfuscate([project2], tmp_path / "copy2", load_dictionary(dictionary), GIT)
+    assert _codes(info.value) == {"E09"}
+
+
+def test_short_substring_rule_reports_w04(tmp_path: Path) -> None:
+    dictionary = make_dictionary(tmp_path / "d.toml", '[rules]\n"vi" = "wkz"\n')
+    project = make_project(tmp_path / "proj", {"a.txt": "x\n"}, use_git=False)
+    report = run_obfuscate([project], tmp_path / "copy", load_dictionary(dictionary), GIT)
+    assert [f.code for f in report.warnings] == ["W04"]

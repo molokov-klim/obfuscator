@@ -17,6 +17,7 @@ FILES = 1000
 TOTAL_BYTES = 20_000_000
 RULES = 500
 LIMIT_SECONDS = 10.0
+WORD_ORIGINALS = ["ret", "val", "imp", "cla", "sel", "urn", "ass", "lue", "por", "elf"]
 
 
 def _project(tmp_path: Path) -> tuple[Path, Path]:
@@ -25,6 +26,8 @@ def _project(tmp_path: Path) -> tuple[Path, Path]:
         {"".join(rng.choice(string.ascii_letters) for _ in range(rng.randint(6, 16))) for _ in range(RULES)}
     )
     lines = ["[rules]"] + [f'"{original}" = "zz{index:04d}q"' for index, original in enumerate(originals)]
+    # Правила по словам — худший случай: короткие оригиналы, которые постоянно встречаются внутри обычных слов.
+    lines += ["[words]"] + [f'"{word}" = "w{index:02d}x"' for index, word in enumerate(WORD_ORIGINALS)]
     dictionary = make_dictionary(tmp_path / "dict.toml", "\n".join(lines) + "\n")
     words = ["return", "self", "value", "import", "class", "def", "x = 1", "(", ")", "for", "in"]
     per_file = TOTAL_BYTES // FILES
@@ -33,7 +36,9 @@ def _project(tmp_path: Path) -> tuple[Path, Path]:
         parts: list[str] = []
         size = 0
         while size < per_file:
-            line = " ".join(rng.choice(words) if rng.random() > 0.02 else rng.choice(originals) for _ in range(10))
+            line = " ".join(
+                rng.choice(words) if rng.random() > 0.02 else rng.choice(originals + WORD_ORIGINALS) for _ in range(10)
+            )
             parts.append(line)
             size += len(line) + 1
         files[f"pkg{index % 20:02d}/module_{index:04d}.py"] = "\n".join(parts) + "\n"

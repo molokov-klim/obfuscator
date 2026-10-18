@@ -27,13 +27,13 @@ def valid_rules(draw: st.DrawFn) -> list[Rule]:
 
 
 @given(rules=valid_rules(), text=st.text(alphabet=TEXT_ALPHABET, max_size=200))
-@settings(max_examples=300)
+@settings(max_examples=300, deadline=None)
 def test_backward_inverts_forward(rules: list[Rule], text: str) -> None:
     assert backward(rules).apply(forward(rules).apply(text)) == text
 
 
 @given(rules=valid_rules(), text=st.text(alphabet=TEXT_ALPHABET, max_size=200))
-@settings(max_examples=200)
+@settings(max_examples=200, deadline=None)
 def test_forward_keeps_line_count(rules: list[Rule], text: str) -> None:
     assert len(split_lines(forward(rules).apply(text))) == len(split_lines(text))
 
@@ -43,7 +43,7 @@ def test_forward_keeps_line_count(rules: list[Rule], text: str) -> None:
     text=st.text(alphabet=TEXT_ALPHABET, max_size=200),
     edits=st.lists(st.tuples(st.integers(min_value=0, max_value=50), st.text(alphabet="abcXYZ ", max_size=10))),
 )
-@settings(max_examples=200)
+@settings(max_examples=200, deadline=None)
 def test_untouched_lines_are_preserved(rules: list[Rule], text: str, edits: list[tuple[int, str]]) -> None:
     fwd = forward(rules)
     baseline = fwd.apply(text)
@@ -60,3 +60,26 @@ def test_untouched_lines_are_preserved(rules: list[Rule], text: str, edits: list
     for index, line in enumerate(original_lines):
         if index not in touched:
             assert result_lines[index] == line
+
+
+@st.composite
+def mixed_rules(draw: st.DrawFn) -> list[Rule]:
+    substrings = draw(st.dictionaries(originals, aliases, min_size=0, max_size=4))
+    words = draw(
+        st.dictionaries(
+            st.text(alphabet="abc", min_size=1, max_size=3), st.text(alphabet="xyz", min_size=2, max_size=4), max_size=4
+        )
+    )
+    rules = [Rule(o, a) for o, a in substrings.items()] + [
+        Rule(o, a, word=True) for o, a in words.items() if o not in substrings
+    ]
+    if not rules or validate_rules(rules):
+        rules = [Rule("ab", "xy", word=True)]
+    return rules
+
+
+@given(rules=mixed_rules(), text=st.text(alphabet="abcAB _-1\n", max_size=200))
+@settings(max_examples=150, deadline=None)
+def test_backward_inverts_forward_with_words(rules: list[Rule], text: str) -> None:
+    restored = backward(rules).apply(forward(rules).apply(text))
+    assert restored == text

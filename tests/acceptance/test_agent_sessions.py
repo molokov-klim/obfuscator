@@ -17,10 +17,12 @@ from obfuscator.dictionary import Dictionary, load_dictionary
 from obfuscator.fsio import read_tree
 from obfuscator.gitio import SubprocessGit
 from obfuscator.inputs import SERVICE_NAMES
+from obfuscator.models import Rule
 from obfuscator.obfuscate import run_obfuscate
 from obfuscator.paths import transform_path
 from obfuscator.replacer import Replacer, forward
 from obfuscator.restore import run_restore
+from obfuscator.scanner import Scanner
 from tests.factories import git, make_dictionary, make_project
 
 GIT = SubprocessGit()
@@ -34,9 +36,50 @@ DICTIONARY = """[rules]
 "Ivan Petrov" = "Person One"
 "ivan.petrov@corp.example" = "person.one@mail.example"
 "s3cr3t-t0ken-42" = "tok-0001"
+
+[words]
+"sim" = "qx"
+"Sim" = "Qx"
+"SIM" = "QX"
+"vi" = "wk"
 """
-ORIGINALS = ["Pepelac", "pepelac", "PEPELAC", "PepelacBig", "db.pepelac.internal", "Ivan Petrov", "s3cr3t-t0ken-42"]
-WORDS = ["def", "return", "self", "value", "import", "class", "x = 1", "# note", "for i in range(3):", "pass", "TODO"]
+ORIGINALS = [
+    "Pepelac",
+    "pepelac",
+    "PEPELAC",
+    "PepelacBig",
+    "db.pepelac.internal",
+    "Ivan Petrov",
+    "s3cr3t-t0ken-42",
+    "sim",
+    "Sim",
+    "SIM",
+    "vi",
+    "simClient",
+    "sim_x",
+    "MySim",
+    "SIM-2",
+    "vi-ui",
+]
+WORDS = [
+    "def",
+    "return",
+    "self",
+    "value",
+    "import",
+    "class",
+    "x = 1",
+    "# note",
+    "for i in range(3):",
+    "pass",
+    "TODO",
+    "simple",
+    "service",
+    "Simulator",
+    "SIMPLE",
+    "vision",
+    "assimilate",
+]
 
 Tree = dict[str, bytes]
 
@@ -145,11 +188,12 @@ def _sync_dir(root: Path, tree: Tree) -> None:
     _write(root, tree)
 
 
-def _assert_no_leaks(copy: Path) -> None:
+def _assert_no_leaks(copy: Path, rules: tuple[Rule, ...]) -> None:
+    """Ни одного оригинала: правила подстроки — где угодно, правила по словам — на границе (FR-020, FR-072)."""
+    scanner = Scanner.originals(rules)
     for path, data in read_tree(copy).items():
-        haystack = (path + "\n" + data.decode("utf-8", errors="replace")).lower()
-        for original in ORIGINALS:
-            assert original.lower() not in haystack, (path, original)
+        assert scanner.find(path) == [], path
+        assert scanner.find(data.decode("utf-8", errors="replace")) == [], path
 
 
 @pytest.mark.parametrize("seed", range(12))
@@ -161,7 +205,7 @@ def test_random_agent_sessions(tmp_path: Path, seed: int) -> None:
     project = make_project(tmp_path / "proj", model)
     copy = tmp_path / "copy"
     run_obfuscate([project], copy, dictionary, GIT)
-    _assert_no_leaks(copy)
+    _assert_no_leaks(copy, dictionary.rules)
     counter = [0]
 
     for cycle in range(3):
@@ -189,5 +233,5 @@ def test_random_agent_sessions(tmp_path: Path, seed: int) -> None:
     shutil.rmtree(copy)
     shutil.rmtree(tmp_path / "copy.obfstate")
     run_obfuscate([project], copy, dictionary, GIT)
-    _assert_no_leaks(copy)
+    _assert_no_leaks(copy, dictionary.rules)
     assert read_tree(copy) == _to_copy(model, fwd)
