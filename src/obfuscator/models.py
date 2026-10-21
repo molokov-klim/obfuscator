@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 FileKind = Literal["text", "binary"]
-Command = Literal["obfuscate", "restore"]
+Command = Literal["obfuscate", "restore", "deobfuscate"]
 
 
 @dataclass(frozen=True)
@@ -62,7 +62,7 @@ class Finding:
 
 @dataclass
 class Report:
-    """Отчёт обфускации или возврата.
+    """Отчёт обфускации, возврата или деобфускации.
 
     Attributes:
         command: Сценарий.
@@ -73,7 +73,7 @@ class Report:
         per_rule: Оригинал → число замен.
         per_file: Путь оригинала → число замен.
         files: Категория → пути оригинала.
-        locations: Где что лежит: ``root``, ``copy``, ``state``, ``patch``.
+        locations: Где что лежит: ``root``, ``copy``, ``state``, ``patch``, ``out``.
     """
 
     command: Command

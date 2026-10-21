@@ -1,4 +1,4 @@
-"""Вход, корень и набор файлов (спецификация §5.2)."""
+"""Вход, корень и набор файлов (спецификация §5.2; без git и `.obfignore` — §5.8 п. 2)."""
 
 import os
 from collections.abc import Iterable, Sequence
@@ -70,11 +70,37 @@ def find_root(paths: Sequence[Path], git: Git) -> tuple[Path, bool]:
     top = next(iter(tops))
     if top is not None:
         return top, True
+    return common_root(paths), False
+
+
+def common_root(paths: Sequence[Path]) -> Path:
+    """Общий предок путей: для файла берётся его каталог, для каталога — он сам (§5.2 п. 3).
+
+    Args:
+        paths: Абсолютные существующие пути.
+
+    Returns:
+        Корень.
+
+    Raises:
+        ObfuscatorError: E07 — пути на разных дисках.
+    """
     bases = [str(path if path.is_dir() else path.parent) for path in paths]
     try:
-        return Path(os.path.commonpath(bases)), False
+        return Path(os.path.commonpath(bases))
     except ValueError as exc:
         raise ObfuscatorError.single("E07", "пути входа на разных дисках") from exc
+
+
+def _absolute_existing(paths: Sequence[Path]) -> list[Path]:
+    if not paths:
+        raise ObfuscatorError.single("E07", "не задан ни один путь")
+    absolute: list[Path] = []
+    for path in paths:
+        if not path.exists():
+            raise ObfuscatorError.single("E07", f"путь не существует: {path}")
+        absolute.append(path.resolve())
+    return absolute
 
 
 def _is_service(relative: str, protected: Iterable[Path], root: Path) -> bool:
@@ -99,13 +125,7 @@ def resolve_inputs(paths: Sequence[Path], git: Git, *, protected: Sequence[Path]
     Raises:
         ObfuscatorError: E07 — путь не существует или вход противоречив; E13 — неверный `.obfignore`.
     """
-    if not paths:
-        raise ObfuscatorError.single("E07", "не задан ни один путь")
-    absolute: list[Path] = []
-    for path in paths:
-        if not path.exists():
-            raise ObfuscatorError.single("E07", f"путь не существует: {path}")
-        absolute.append(path.resolve())
+    absolute = _absolute_existing(paths)
     root, is_git = find_root(absolute, git)
     inputs = tuple(sorted({_relative(path, root) for path in absolute}))
     rules = IgnoreRules(root)
@@ -162,6 +182,70 @@ def resolve_inputs(paths: Sequence[Path], git: Git, *, protected: Sequence[Path]
         git=is_git,
         files=tuple(sorted(candidates)),
         excluded_ignore=tuple(sorted(ignored)),
+        excluded_service=tuple(sorted(service)),
+        skipped=tuple(sorted(skipped, key=lambda item: item.path or "")),
+    )
+
+
+def resolve_plain_inputs(paths: Sequence[Path], *, protected: Sequence[Path] = ()) -> InputSet:
+    """Разбирает вход деобфускации: все обычные файлы путей, без git и `.obfignore` (§5.8 п. 2).
+
+    Args:
+        paths: Пути входа (как переданы пользователем).
+        protected: Абсолютные пути, которые пропускаются: файл словаря, каталог результата.
+
+    Returns:
+        Разобранный вход (``git`` всегда ``False``, ``excluded_ignore`` пуст).
+
+    Raises:
+        ObfuscatorError: E07 — путь не существует или пути на разных дисках.
+    """
+    absolute = _absolute_existing(paths)
+    root = common_root(absolute)
+    inputs = tuple(sorted({_relative(path, root) for path in absolute}))
+    protected_resolved = [item.resolve() for item in protected]
+    candidates: set[str] = set()
+    skipped: list[Finding] = []
+    service: set[str] = set()
+
+    def is_protected(path: Path) -> bool:
+        return any(_is_within(path, item) for item in protected_resolved)
+
+    def consider(path: Path) -> None:
+        relative = _relative(path, root)
+        if path.is_symlink():
+            skipped.append(finding("W03", "символическая ссылка", path=relative))
+        elif is_protected(path):
+            service.add(relative)
+        elif path.is_file():
+            candidates.add(relative)
+
+    for path in absolute:
+        if not path.is_dir():
+            consider(path)
+            continue
+        for directory, dirnames, filenames in os.walk(path):
+            base = Path(directory)
+            kept: list[str] = []
+            for name in sorted(dirnames):
+                child = base / name
+                if name == ".git":
+                    continue
+                if child.is_symlink():
+                    skipped.append(finding("W03", "символическая ссылка", path=_relative(child, root)))
+                elif is_protected(child):
+                    service.add(_relative(child, root) + "/")
+                else:
+                    kept.append(name)
+            dirnames[:] = kept
+            for name in sorted(filenames):
+                consider(base / name)
+
+    return InputSet(
+        root=root,
+        inputs=inputs,
+        git=False,
+        files=tuple(sorted(candidates)),
         excluded_service=tuple(sorted(service)),
         skipped=tuple(sorted(skipped, key=lambda item: item.path or "")),
     )

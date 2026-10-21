@@ -11,12 +11,13 @@ from pathlib import Path
 from typing import TextIO
 
 from obfuscator import __version__
+from obfuscator.deobfuscate import run_deobfuscate
 from obfuscator.dictionary import load_dictionary, resolve_dictionary_path
 from obfuscator.errors import ObfuscatorError
 from obfuscator.gitio import Git, SubprocessGit
 from obfuscator.models import Finding
 from obfuscator.obfuscate import run_obfuscate
-from obfuscator.report import format_obfuscate, format_refusal, format_restore, summary_lines
+from obfuscator.report import format_deobfuscate, format_obfuscate, format_refusal, format_restore, summary_lines
 from obfuscator.restore import Mode, run_restore
 
 EXIT_OK = 0
@@ -40,6 +41,9 @@ def build_parser() -> argparse.ArgumentParser:
     obfuscate = commands.add_parser("obfuscate", help="построить обфусцированную копию")
     obfuscate.add_argument("paths", nargs="+", type=Path, metavar="PATH", help="файлы и каталоги входа")
     obfuscate.add_argument("--out", required=True, type=Path, metavar="DIR", help="каталог копии")
+    obfuscate.add_argument(
+        "--no-state", action="store_true", help="не создавать состояние: возврат через restore будет невозможен"
+    )
     obfuscate.add_argument("--dict", dest="dictionary", metavar="FILE", help="словарь (иначе OBFUSCATOR_DICT)")
     obfuscate.add_argument("--verbose", action="store_true", help="подробности по файлам")
 
@@ -50,6 +54,14 @@ def build_parser() -> argparse.ArgumentParser:
     how.add_argument("--patch", type=Path, metavar="FILE", help="записать патч для git apply")
     restore.add_argument("--dict", dest="dictionary", metavar="FILE", help="словарь (иначе OBFUSCATOR_DICT)")
     restore.add_argument("--verbose", action="store_true", help="списки файлов")
+
+    deobfuscate = commands.add_parser("deobfuscate", help="заменить алиасы оригиналами в любых файлах (без состояния)")
+    deobfuscate.add_argument("paths", nargs="+", type=Path, metavar="PATH", help="файлы и каталоги входа")
+    deobfuscate.add_argument(
+        "--out", required=True, type=Path, metavar="DIR", help="новый или пустой каталог результата"
+    )
+    deobfuscate.add_argument("--dict", dest="dictionary", metavar="FILE", help="словарь (иначе OBFUSCATOR_DICT)")
+    deobfuscate.add_argument("--verbose", action="store_true", help="подробности по файлам")
     return parser
 
 
@@ -63,8 +75,9 @@ def _obfuscate(args: argparse.Namespace, git: Git) -> int:
     paths: list[Path] = args.paths
     out: Path = args.out
     verbose: bool = args.verbose
+    no_state: bool = args.no_state
     dictionary = load_dictionary(resolve_dictionary_path(dictionary_arg))
-    report = run_obfuscate(paths, out, dictionary, git)
+    report = run_obfuscate(paths, out, dictionary, git, no_state=no_state)
     sys.stdout.write(format_obfuscate(report, {r.original: r.alias for r in dictionary.rules}, verbose=verbose))
     _print_findings(report.warnings, sys.stderr, verbose=verbose)
     return EXIT_OK
@@ -79,6 +92,18 @@ def _restore(args: argparse.Namespace, git: Git) -> int:
     dictionary = load_dictionary(resolve_dictionary_path(dictionary_arg))
     report = run_restore(copy, mode, dictionary, git, patch_file=patch)
     sys.stdout.write(format_restore(report, mode, verbose=verbose))
+    _print_findings(report.warnings, sys.stderr, verbose=verbose)
+    return EXIT_OK
+
+
+def _deobfuscate(args: argparse.Namespace) -> int:
+    dictionary_arg: str | None = args.dictionary
+    paths: list[Path] = args.paths
+    out: Path = args.out
+    verbose: bool = args.verbose
+    dictionary = load_dictionary(resolve_dictionary_path(dictionary_arg))
+    report = run_deobfuscate(paths, out, dictionary)
+    sys.stdout.write(format_deobfuscate(report, {r.alias: r.original for r in dictionary.rules}, verbose=verbose))
     _print_findings(report.warnings, sys.stderr, verbose=verbose)
     return EXIT_OK
 
@@ -111,6 +136,8 @@ def main(argv: Sequence[str] | None = None, *, git: Git | None = None) -> int:
         parser.print_help(sys.stderr)
         return EXIT_USAGE
     try:
+        if command == "deobfuscate":
+            return _deobfuscate(args)
         port = git or SubprocessGit()
         return _obfuscate(args, port) if command == "obfuscate" else _restore(args, port)
     except ObfuscatorError as error:
