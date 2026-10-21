@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from obfuscator.deobfuscate import run_deobfuscate
 from obfuscator.dictionary import Dictionary, load_dictionary
 from obfuscator.fsio import read_tree
 from obfuscator.gitio import SubprocessGit
@@ -235,3 +236,31 @@ def test_random_agent_sessions(tmp_path: Path, seed: int) -> None:
     run_obfuscate([project], copy, dictionary, GIT)
     _assert_no_leaks(copy, dictionary.rules)
     assert read_tree(copy) == _to_copy(model, fwd)
+
+
+@pytest.mark.parametrize("seed", range(12))
+def test_random_external_files_deobfuscate(tmp_path: Path, seed: int) -> None:
+    """T-83: внешняя сторона присылает новые файлы на основе копии; деобфускация возвращает оригиналы (SC-017)."""
+    rng = random.Random(1000 + seed)
+    dictionary: Dictionary = load_dictionary(make_dictionary(tmp_path / "dict.toml", DICTIONARY))
+    fwd = forward(dictionary.rules)
+    # Модель ответа в пространстве оригинала: новые файлы, каталоги с оригиналами в именах, CRLF и LF.
+    expected: Tree = {}
+    for index in range(rng.randint(3, 10)):
+        folder = rng.choice(["answer", "answer/pepelac", "answer/Pepelac_sim", "answer/notes-vi"])
+        newline = rng.choice(["\n", "\r\n"])
+        expected[f"{folder}/reply_{index}_{rng.choice(['Pepelac', 'simClient', 'plain'])}.md"] = _text_file(
+            rng, newline
+        )
+    expected["answer/blob.bin"] = bytes(range(256))
+    # Внешняя сторона видела только алиасы.
+    inbox = tmp_path / "inbox"
+    _write(inbox, _to_copy(expected, fwd))
+    before = read_tree(inbox)
+
+    out = tmp_path / "restored"
+    report = run_deobfuscate([inbox], out, dictionary)
+
+    assert read_tree(out) == expected
+    assert read_tree(inbox) == before
+    assert not [w for w in report.warnings if w.code in {"W10", "W11"}], report.warnings

@@ -149,7 +149,50 @@ def format_obfuscate(report: Report, aliases: dict[str, str], *, verbose: bool =
     lines.extend(_findings_block("Предупреждения", report.warnings, verbose=verbose))
     lines.append("Ошибки: 0")
     lines.append(f"Копия: {report.locations.get('copy', '')}")
-    lines.append(f"Состояние: {report.locations.get('state', '')}")
+    if "state" in report.locations:
+        lines.append(f"Состояние: {report.locations['state']}")
+    else:
+        lines.append("Состояние: не создано (--no-state); ответ возвращается командой deobfuscate")
+    return "\n".join(lines) + "\n"
+
+
+def format_deobfuscate(report: Report, originals: dict[str, str], *, verbose: bool = False) -> str:
+    """Отчёт об успешной деобфускации (§6.1).
+
+    Args:
+        report: Отчёт сценария.
+        originals: Алиас → оригинал для строк сводки по правилам.
+        verbose: Добавить подробности по файлам.
+
+    Returns:
+        Текст отчёта.
+    """
+    c = report.counters
+    lines = [
+        "obfuscator deobfuscate — OK",
+        f"Вход: путей {c.get('inputs', 0)}, корень {report.locations.get('root', '')}",
+        (
+            f"Файлы: обработано {c.get('processed', 0)} (текстовых {c.get('text', 0)}, "
+            f"бинарных {c.get('binary', 0)}); пропущено {c.get('skipped', 0)}"
+        ),
+        (
+            f"Восстановлено замен: {c.get('replacements', 0)} в {c.get('files_with_replacements', 0)} файлах; "
+            f"путей изменено {c.get('paths_changed', 0)}"
+        ),
+    ]
+    labels = {alias: f"{alias} → {originals.get(alias, '?')}" for alias in report.per_rule}
+    width = max((len(label) for label in labels.values()), default=0)
+    for alias, count in report.per_rule.items():
+        lines.append(f"  {labels[alias].ljust(width)}  {count}")
+    if verbose:
+        lines.append("По файлам:")
+        lines.extend(f"  {path}  {count}" for path, count in report.per_file.items())
+        for category, paths in report.files.items():
+            lines.append(f"{category.capitalize()}: {len(paths)}")
+            lines.extend(f"  {path}" for path in paths)
+    lines.extend(_findings_block("Предупреждения", report.warnings, verbose=verbose))
+    lines.append("Ошибки: 0")
+    lines.append(f"Результат: {report.locations.get('out', '')}")
     return "\n".join(lines) + "\n"
 
 

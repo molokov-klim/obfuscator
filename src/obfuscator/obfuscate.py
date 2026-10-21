@@ -58,12 +58,13 @@ def read_sources(inputs: InputSet) -> list[SourceFile]:
     return sources
 
 
-def _check_out(out: Path, inputs: InputSet) -> None:
-    """Проверяет каталог копии (FR-018, §5.6 п. 8).
+def check_out_overlap(out: Path, inputs: InputSet, what: str = "каталог копии") -> None:
+    """Проверяет, что каталог вывода и пути входа не вложены друг в друга.
 
     Args:
-        out: Абсолютный путь копии.
+        out: Абсолютный путь каталога вывода.
         inputs: Разобранный вход.
+        what: Название каталога для сообщения.
 
     Raises:
         ObfuscatorError: E08.
@@ -71,10 +72,47 @@ def _check_out(out: Path, inputs: InputSet) -> None:
     for relative in inputs.inputs:
         item = (inputs.root / relative).resolve()
         if out == item or item in out.parents:
-            raise ObfuscatorError.single("E08", f"каталог копии внутри входа: {out}")
+            raise ObfuscatorError.single("E08", f"{what} внутри входа: {out}")
         if out in item.parents:
-            raise ObfuscatorError.single("E08", f"вход внутри каталога копии: {out}")
+            raise ObfuscatorError.single("E08", f"вход внутри: {what} {out}")
+
+
+def check_out_fresh(out: Path, what: str = "каталог копии") -> None:
+    """Проверяет, что каталог вывода не существует или пуст.
+
+    Args:
+        out: Абсолютный путь.
+        what: Название каталога для сообщения.
+
+    Raises:
+        ObfuscatorError: E08.
+    """
+    if not out.exists():
+        return
+    if not out.is_dir():
+        raise ObfuscatorError.single("E08", f"--out — не каталог: {out}")
+    if not is_empty_dir(out):
+        raise ObfuscatorError.single("E08", f"{what} не пуст: {out}")
+
+
+def _check_out(out: Path, inputs: InputSet, *, no_state: bool = False) -> None:
+    """Проверяет каталог копии (FR-018, §5.6 п. 8–9).
+
+    Args:
+        out: Абсолютный путь копии.
+        inputs: Разобранный вход.
+        no_state: Обфускация без состояния: только несуществующий или пустой каталог без состояния рядом.
+
+    Raises:
+        ObfuscatorError: E08.
+    """
+    check_out_overlap(out, inputs)
     state_dir = state_dir_for(out)
+    if no_state:
+        if state_dir.exists():
+            raise ObfuscatorError.single("E08", f"рядом с каталогом копии есть состояние другой копии: {state_dir}")
+        check_out_fresh(out)
+        return
     if not out.exists():
         if state_dir.exists():
             raise ObfuscatorError.single("E08", f"каталог состояния уже существует без копии: {state_dir}")
@@ -95,7 +133,7 @@ def _check_out(out: Path, inputs: InputSet) -> None:
         )
 
 
-def run_obfuscate(paths: list[Path], out: Path, dictionary: Dictionary, git: Git) -> Report:
+def run_obfuscate(paths: list[Path], out: Path, dictionary: Dictionary, git: Git, *, no_state: bool = False) -> Report:
     """Строит обфусцированную копию и состояние.
 
     Args:
@@ -103,6 +141,7 @@ def run_obfuscate(paths: list[Path], out: Path, dictionary: Dictionary, git: Git
         out: Каталог копии.
         dictionary: Проверенный словарь.
         git: Порт git.
+        no_state: Не создавать состояние (FR-088, §5.6 п. 9).
 
     Returns:
         Отчёт об успешной обфускации.
@@ -113,7 +152,7 @@ def run_obfuscate(paths: list[Path], out: Path, dictionary: Dictionary, git: Git
     out = out.resolve()
     state_dir = state_dir_for(out)
     inputs = resolve_inputs(paths, git, protected=[dictionary.path, out, state_dir])
-    _check_out(out, inputs)
+    _check_out(out, inputs, no_state=no_state)
     allow = load_allow(inputs.root)
     sources = read_sources(inputs)
     rules = dictionary.rules
@@ -189,15 +228,19 @@ def run_obfuscate(paths: list[Path], out: Path, dictionary: Dictionary, git: Git
         files=tuple(entries),
     )
     staged_copy = make_staging(out)
-    staged_state = make_staging(state_dir)
+    staged_state = None if no_state else make_staging(state_dir)
     try:
         write_tree(staged_copy, copy_files)
-        write_tree(staged_state / BASELINE_DIR, copy_files)
-        write_state(staged_state, state)
-        swap_into_place([(staged_copy, out), (staged_state, state_dir)])
+        if staged_state is None:
+            swap_into_place([(staged_copy, out)])
+        else:
+            write_tree(staged_state / BASELINE_DIR, copy_files)
+            write_state(staged_state, state)
+            swap_into_place([(staged_copy, out), (staged_state, state_dir)])
     finally:
         remove_tree(staged_copy)
-        remove_tree(staged_state)
+        if staged_state is not None:
+            remove_tree(staged_state)
 
     report = Report(command="obfuscate", warnings=warnings)
     report.per_rule = {rule.original: per_rule[rule.original] for rule in rules if per_rule[rule.original]}
@@ -221,5 +264,7 @@ def run_obfuscate(paths: list[Path], out: Path, dictionary: Dictionary, git: Git
         "исключены .obfignore": list(inputs.excluded_ignore),
         "исключены служебные": list(inputs.excluded_service),
     }
-    report.locations = {"root": str(inputs.root), "copy": str(out), "state": str(state_dir)}
+    report.locations = {"root": str(inputs.root), "copy": str(out)}
+    if not no_state:
+        report.locations["state"] = str(state_dir)
     return report
